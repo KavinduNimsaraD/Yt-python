@@ -2,6 +2,9 @@ import pandas as pd
 import numpy as np
 import bar_chart_race as bcr
 import matplotlib.pyplot as plt
+from pathlib import Path
+from bar_chart_race._make_chart import _BarChartRace
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 
 print("දත්ත සකස් කරමින් පවතී...")
 
@@ -40,6 +43,27 @@ milestones = {
     ],
 }
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+LOGO_DIR = SCRIPT_DIR / "assets" / "logos"
+GAME_LOGOS = {
+    "GTA III": "gta-iii.png",
+    "GTA Vice City": "gta-vice-city.png",
+    "GTA San Andreas": "gta-san-andreas.png",
+    "GTA IV": "gta-iv.png",
+    "GTA V": "gta-v.png",
+}
+
+
+def load_game_logos():
+    logos = {}
+    for game, logo_file in GAME_LOGOS.items():
+        logo_path = LOGO_DIR / logo_file
+        if logo_path.exists():
+            logos[game] = plt.imread(logo_path)
+        else:
+            print(f"⚠️ Logo not found for {game}: {logo_path}")
+    return logos
+
 # --- Build monthly dataframe with smooth growth ---
 all_dates = pd.date_range("2001-10-01", "2026-05-01", freq="MS")
 df = pd.DataFrame(index=all_dates)
@@ -75,21 +99,69 @@ period_length = int((target_seconds * 1000) / len(df))
 print(f"Estimated video length ≈ {len(df) * period_length / 1000:.1f} seconds")
 print("🎬 1080p Full HD Video එක Render වෙමින් පවතී...")
 
-bcr.bar_chart_race(
-    df=df,
-    filename="GTA_Evolution_1080p.mp4",
-    orientation="h",
-    sort="desc",
-    n_bars=5,
-    steps_per_period=30,
-    period_length=period_length,
-    title="Evolution of GTA Series (Copies Sold in Millions)",
-    cmap="Set2",
-    tick_label_size=14,
-    bar_label_size=16,
-    period_label={"x": 0.95, "y": 0.15, "ha": "right", "va": "center",
-                  "size": 45, "weight": "bold", "color": "#333333"},
-    bar_kwargs={"alpha": 0.9, "lw": 1}
-)
+logo_images = load_game_logos()
+original_plot_bars = _BarChartRace.plot_bars
+
+
+def plot_bars_with_logos(self, i):
+    for artist in getattr(self, "_logo_artists", []):
+        artist.remove()
+    self._logo_artists = []
+
+    original_plot_bars(self, i)
+
+    if self.orientation != "h" or not logo_images:
+        return
+
+    bar_location = self.df_ranks.iloc[i].values
+    top_filt = (bar_location > 0) & (bar_location < self.n_bars + 1)
+    bar_location = bar_location[top_filt]
+    bar_length = self.df_values.iloc[i].values[top_filt]
+    cols = self.df_values.columns[top_filt]
+
+    x_min, x_max = self.ax.get_xlim()
+    x_span = x_max - x_min
+    x_pad = x_span * 0.006
+
+    for game, y_pos, x_val in zip(cols, bar_location, bar_length):
+        logo = logo_images.get(game)
+        if logo is None:
+            continue
+        x_pos = min(x_val + x_pad, x_max - x_pad)
+        image = OffsetImage(logo, zoom=0.16, interpolation="bicubic")
+        artist = AnnotationBbox(
+            image,
+            (x_pos, y_pos),
+            frameon=False,
+            box_alignment=(0, 0.5),
+            xycoords="data",
+            annotation_clip=True,
+            pad=0,
+            zorder=6,
+        )
+        self.ax.add_artist(artist)
+        self._logo_artists.append(artist)
+
+
+_BarChartRace.plot_bars = plot_bars_with_logos
+try:
+    bcr.bar_chart_race(
+        df=df,
+        filename="GTA_Evolution_1080p.mp4",
+        orientation="h",
+        sort="desc",
+        n_bars=5,
+        steps_per_period=30,
+        period_length=period_length,
+        title="Evolution of GTA Series (Copies Sold in Millions)",
+        cmap="Set2",
+        tick_label_size=14,
+        bar_label_size=16,
+        period_label={"x": 0.95, "y": 0.15, "ha": "right", "va": "center",
+                      "size": 45, "weight": "bold", "color": "#333333"},
+        bar_kwargs={"alpha": 0.9, "lw": 1}
+    )
+finally:
+    _BarChartRace.plot_bars = original_plot_bars
 
 print("✅ වැඩේ හරි! 'GTA_Evolution_1080p.mp4' නමින් Video එක Save වෙලා.")
