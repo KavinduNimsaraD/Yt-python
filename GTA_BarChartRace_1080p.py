@@ -11,8 +11,13 @@ def smooth_growth(start, end, n):
     s = 1 / (1 + np.exp(-t))
     return start + (end - start) * s
 
+# --- Unit configuration ---
+# Raw milestone values are in millions; scale to finer units for smoother label transitions.
+UNIT_SCALE = 1000
+UNIT_LABEL = "Thousands"
+
 # --- Milestone data (Millions) ---
-milestones = {
+milestones_millions = {
     "GTA III": [
         ("2001-10-01", 0),
         ("2008-03-01", 14.5),
@@ -38,6 +43,12 @@ milestones = {
         ("2025-11-01", 220.0),
         ("2026-05-01", 220.0),
     ],
+}
+
+# --- Convert to selected unit ---
+milestones = {
+    game: [(date, value * UNIT_SCALE) for date, value in points]
+    for game, points in milestones_millions.items()
 }
 
 # --- Build monthly dataframe with smooth growth ---
@@ -83,7 +94,7 @@ bcr.bar_chart_race(
     n_bars=5,
     steps_per_period=30,
     period_length=period_length,
-    title="Evolution of GTA Series (Copies Sold in Millions)",
+    title=f"Evolution of GTA Series (Copies Sold in {UNIT_LABEL})",
     cmap="Set2",
     tick_label_size=14,
     bar_label_size=16,
